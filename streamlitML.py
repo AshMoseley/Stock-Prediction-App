@@ -16,14 +16,14 @@ from datetime import date
 import  plotly.express as px
 
 START = "2014-01-01"
-TODAY = dt.datetime.now().strftime("%Y-%m-%d")
+TODAY = date.today().strftime("%Y-%m-%d")
 
 st.title("Stock Prediction App")
 
-stocks = ["Select the Stock", "AAPL", "GOOG", "MSFT", "AMZN", "TSLA", "GME", "NVDA", "AMD"]
+stocks = ["AAPL", "GOOG", "MSFT", "AMZN", "TSLA", "GME", "NVDA", "AMD"]
 
 
-# Loading Data ---------------------
+# ---------- Caching Data ----------------------------
 
 @st.cache_data
 def load_data(ticker):
@@ -32,58 +32,81 @@ def load_data(ticker):
     return data
 
 
-#For Stock Financials ----------------------
+# ---------- Displaying Financials ----------------------------
 
 def stock_financials(stock):
     df_ticker = yf.Ticker(stock)
-    sector = df_ticker.info['sector']
-    prevClose = df_ticker.info['previousClose']
-    marketCap = df_ticker.info['marketCap']
-    twoHunDayAvg = df_ticker.info['twoHundredDayAverage']
-    fiftyTwoWeekHigh = df_ticker.info['fiftyTwoWeekHigh']
-    fiftyTwoWeekLow = df_ticker.info['fiftyTwoWeekLow']
-    Name = df_ticker.info['longName']
-    averageVolume = df_ticker.info['averageVolume']
-    ftWeekChange = df_ticker.info['52WeekChange']
-    website = df_ticker.info['website']
+    info = df_ticker.info
 
-    st.write('Company Name -', Name)
-    st.write('Sector -', sector)
-    st.write('Company Website -', website)
-    st.write('Average Volume -', averageVolume)
-    st.write('Market Cap -', marketCap)
-    st.write('Previous Close -', prevClose)
-    st.write('52 Week Change -', ftWeekChange)
-    st.write('52 Week High -', fiftyTwoWeekHigh)
-    st.write('52 Week Low -', fiftyTwoWeekLow)
-    st.write('200 Day Average -', twoHunDayAvg)
+    # Prepare data in a dictionary for easier manipulation and display
+    financial_data = {
+        "Company Name": info.get('longName'),
+        "Sector": info.get('sector'),
+        "Website": info.get('website'),
+        "Average Volume": f"{info.get('averageVolume', 0):,}",  # format with commas
+        "Market Cap": f"${info.get('marketCap', 0):,}",
+        "Previous Close": f"${info.get('previousClose', 0):.2f}",
+        "52 Week Change": f"{info.get('52WeekChange', 0) * 100:.2f}%",  # converting to percentage
+        "52 Week High": f"${info.get('fiftyTwoWeekHigh', 0):.2f}",
+        "52 Week Low": f"${info.get('fiftyTwoWeekLow', 0):.2f}",
+        "200 Day Average": f"${info.get('twoHundredDayAverage', 0):.2f}"
+    }
+
+    # Convert dictionary to DataFrame for better tabular display
+    financial_df = pd.DataFrame(list(financial_data.items()), columns=['Metric', 'Value'])
+    
+    # Display as a table using Streamlit, this can be styled if needed
+    st.table(financial_df.set_index('Metric'))
 
 
-#Plotting Raw Data ---------------------------------------
 
-def plot_raw_data(stock, data_1):
+# ---------- Plotting Raw Data ----------------------------
+
+def plot_raw_data(stock, data):
     df_ticker = yf.Ticker(stock)
-    Name = df_ticker.info['longName']
-    data_1.reset_index()
-    numeric_df = data_1.select_dtypes(['float', 'int'])
+    Name = df_ticker.info['longName']  # Use for the plot title
+
+    # If data is passed as a DataFrame, ensure to reset the index if 'Date' is not a column
+    if 'Date' not in data.columns:
+        data.reset_index(inplace=True)
+
+    numeric_df = data.select_dtypes(['float', 'int'])
     numeric_cols = numeric_df.columns.tolist()
-    st.markdown('')
-    st.markdown('**_Features_** you want to **_Plot_**')
-    features_selected = st.multiselect("", numeric_cols)
-    if st.button("Generate Plot"):
-        cust_data = data_1[features_selected]
-        plotly_figure = px.line(data_frame=cust_data, x=data_1['Date'], y=features_selected,
-                                title= Name + ' ' + '<i>timeline</i>')
-        plotly_figure.update_layout(title = {'y':0.9,'x':0.5, 'xanchor': 'center', 'yanchor': 'top'})
-        plotly_figure.update_xaxes(title_text='Date')
-        plotly_figure.update_layout(legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01, title="Price"), width=800, height=550)
-        st.plotly_chart(plotly_figure)
+
+    st.markdown('**Select Features to Plot**')
+    features_selected = st.multiselect("Choose features", numeric_cols)
+
+    if features_selected:
+        cust_data = data[features_selected]
+        plotly_figure = px.line(data_frame=cust_data, x=data['Date'], y=features_selected,
+                                title=f'{Name} - Selected Features Over Time')
+        
+        # Update layout for better visualization
+        plotly_figure.update_layout(
+            title={'y':0.9, 'x':0.5, 'xanchor': 'center', 'yanchor': 'top'},
+            xaxis_title='Date',
+            yaxis_title='Value',
+            legend_title='Variables',
+            legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
+            margin=dict(l=20, r=20, t=50, b=20)
+        )
+        st.plotly_chart(plotly_figure, use_container_width=True)
+    else:
+        st.warning("Please select at least one feature to plot.")
+
+
+# ----------------- Model Training and Evaluation ----------------------
+def evaluate_model_performance(y_true, y_pred):
+    mse = mean_squared_error(y_true, y_pred)
+    rmse = sqrt(mse)
+    mae = mean_absolute_error(y_true, y_pred)
+    r2 = r2_score(y_true, y_pred)
+    
+    return mse, rmse, mae, r2
 
 
 
-#For LSTM MOdel ------------------------------
-
-# Data preparation
+# ------------- Data preparation for LSTM Model ----------------------
 def create_train_test_data(df, history_size=60):
     # Assuming 'Date' is not used as an input feature for LSTM
     features = df[['Open', 'High', 'Low', 'Close', 'Volume']]
@@ -103,7 +126,7 @@ def create_train_test_data(df, history_size=60):
 
 
 
-#Creating Training and Testing Data for other Models ----------------------
+# ----------- Creating Training and Testing Data for LSTM Model ----------------
 
 # LSTM model with dropout and early stopping
 def train_LSTM_model(x_train, y_train, epochs, batch_size):
@@ -123,60 +146,74 @@ def train_LSTM_model(x_train, y_train, epochs, batch_size):
               validation_split=0.1, callbacks=[early_stop], verbose=1)
     return model
 
-#Finding Movinf Average ---------------------------------------
 
-def find_moving_avg(ma_button, df):
-    days = ma_button
 
-    data1 = df.sort_index(ascending=True, axis=0)
-    new_data = pd.DataFrame(index=range(0, len(df)), columns=['Date', 'Close'])
+# -------------- Finding Moving Average ---------------------------------------
 
-    for i in range(0, len(data1)):
-        new_data['Date'][i] = data1['Date'][i]
-        new_data['Close'][i] = data1['Close'][i]
+def find_moving_avg(ma_days, data):
+    # Ensure the Date column is in the correct format and set as index if not already
+    if 'Date' not in data.columns:
+        data.reset_index(inplace=True)
+    data['Date'] = pd.to_datetime(data['Date'])
+    data.set_index('Date', inplace=True)
 
-    new_data['SMA_'+str(days)] = new_data['Close'].rolling(min_periods=1, window=days).mean()
+    # Calculate the moving average directly in the DataFrame to avoid chained assignment
+    data.loc[:, 'SMA'] = data['Close'].rolling(window=ma_days, min_periods=1).mean()
 
-    #new_data.dropna(inplace=True)
-    new_data.isna().sum()
+    # Reset index to use Date in the plot
+    data.reset_index(inplace=True)
 
-    #st.write(new_data)
-
+    # Plotting the stock prices and the moving average
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=new_data['Date'], y=new_data['Close'], mode='lines', name='Close'))
-    fig.add_trace(go.Scatter(x=new_data['Date'], y=new_data['SMA_'+str(days)], mode='lines', name='SMA_'+str(days)))
-    fig.update_layout(legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01), height=550, width=800,
-                      autosize=False, margin=dict(l=25, r=75, b=100, t=0))
+    fig.add_trace(go.Scatter(x=data['Date'], y=data['Close'], mode='lines', name='Close Price'))
+    fig.add_trace(go.Scatter(x=data['Date'], y=data['SMA'], mode='lines', name=f'{ma_days}-Day SMA'))
 
-    st.plotly_chart(fig)
+    # Update layout for better visualization
+    fig.update_layout(
+        title=f'{ma_days}-Day Moving Average',
+        xaxis_title='Date',
+        yaxis_title='Price',
+        legend_title='Legend',
+        legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
+        margin=dict(l=20, r=20, t=50, b=20)
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
 
 
+#------------ Plotting the Predictions -------------------------
 
 
-#Plotting the Predictions -------------------------
-
-
-# Prediction and plotting function
 def prediction_plot(model, df, scaler, history_size=60):
-    features = df[['Open', 'High', 'Low', 'Close', 'Volume']].values
-    dates = df['Date'].values
+    # Ensure 'features' remains a DataFrame with the same columns used in scaler fitting
+    features = df[['Open', 'High', 'Low', 'Close', 'Volume']]
+    dates = df['Date'].values  # Make sure this is used correctly in plotting
+
+    # Apply transformation using DataFrame to retain column names
     scaled_features = scaler.transform(features)
 
+    # Prepare the data for LSTM input
     X_test = []
     for i in range(history_size, len(features)):
         X_test.append(scaled_features[i-history_size:i])
     X_test = np.array(X_test)
 
+    # Get model predictions
     predicted_prices = model.predict(X_test)
 
-    # Inverse transform for 'Close' predictions
-    # Assuming 'Close' is the fourth column (index 3) in your features
-    dummy_for_inverse = np.zeros((len(predicted_prices), scaled_features.shape[1]))
-    dummy_for_inverse[:, 3] = predicted_prices.flatten()
-    predicted_close_prices = scaler.inverse_transform(dummy_for_inverse)[:, 3]
+    # Inverse transform the predictions; creating a dummy DataFrame for inverse
+    dummy_for_inverse = pd.DataFrame(np.zeros((len(predicted_prices), scaled_features.shape[1])),
+                                     columns=features.columns)
+    dummy_for_inverse['Close'] = predicted_prices.flatten()  # Assuming 'Close' is what we're predicting
 
-    actual_close_prices = features[history_size:, 3]  # Index 3 for 'Close'
+    # Using the scaler on the DataFrame now
+    inverse_transformed = scaler.inverse_transform(dummy_for_inverse)
+    predicted_close_prices = inverse_transformed[:, features.columns.get_loc('Close')]  # Extract the 'Close' column values
+
+    actual_close_prices = features['Close'][history_size:].values  # Ensure this pulls correctly
+
+    mse, rmse, mae, r2 = evaluate_model_performance(actual_close_prices, predicted_close_prices)
+
 
     # Plotting
     fig = go.Figure()
@@ -185,95 +222,51 @@ def prediction_plot(model, df, scaler, history_size=60):
     fig.update_layout(title='Actual vs Predicted Close Prices', xaxis_title='Date', yaxis_title='Price')
     st.plotly_chart(fig)
 
+    st.write(f"Model Evaluation Metrics:")
+    st.write(f"Mean Squared Error: {mse}")
+    st.write(f"Root Mean Squared Error: {rmse}")
+    st.write(f"Mean Absolute Error: {mae}")
+    st.write(f"R^2 Score: {r2}")
 
-    
 
 
- #Sidebar Menu -----------------------
-
-menu=["Stock Exploration and Feature Extraction", "Train Model"]
+# ---------------- Sidebar Menu -----------------------
 st.sidebar.title("Settings")
-st.sidebar.subheader("Timeseries Settings")
-choices = st.sidebar.selectbox("Select the Activity", menu,index=0)
+activity = st.sidebar.radio("Select Activity", ["Explore Stocks", "Train Model"])
 
+# Allow user input for stock symbol
+user_input = st.sidebar.text_input("Enter Stock Symbol", 'AAPL').upper()
 
-
-if choices == 'Stock Exploration and Feature Extraction':
-    st.subheader("Extract Data")
-    st.markdown('Enter **_Ticker_ Symbol** for the **Stock**')
-    user_input = st.text_input("", '')
-
-    if not user_input:
-        pass
-    else:
-        data = load_data(user_input)
-        st.markdown('Select from the options below to Explore Stocks')
-
-        selected_explore = st.selectbox("", options=['Select your Option', 'Stock Financials Exploration',
-                                                     'Extract Features for Stock Price Forecasting'], index=0)
-        if selected_explore == 'Stock Financials Exploration':
-            st.markdown('')
-            st.markdown('**_Stock_ _Financial_** Information ------')
-            st.markdown('')
-            st.markdown('')
-            stock_financials(user_input)
-            plot_raw_data(user_input, data)
-            st.markdown('')
-            shw_SMA = st.checkbox('Show Moving Average')
-
-            if shw_SMA:
-                st.write('Stock Data based on Moving Average')
-                st.write('A Moving Average(MA) is a stock indicator that is commonly used in technical analysis')
-                st.write(
-                    'The reason for calculating moving average of a stock is to help smooth out the price of data over '
-                    'a specified period of time by creating a constanly updated average price')
-                st.write(
-                    'A Simple Moving Average (SMA) is a calculation that takes the arithmatic mean of a given set of '
-                    'prices over the specified number of days in the past, for example: over the previous 15, 30, 50, '
-                    '100, or 200 days.')
-
-                ma_button = st.number_input("Select Number of Days Moving Average", 5, 200)
-
-                if ma_button:
-                    st.write('You entered the Moving Average for ', ma_button, 'days')
-                    find_moving_avg(ma_button, data)
-
-        elif selected_explore == 'Extract Features for Stock Price Forecasting':
-            st.markdown('Select **_Start_ _Date_ _for_ _Historical_ Stock** Data & features')
-            start_date = st.date_input("", date(2014, 1, 1))
-            st.write('You Selected Data From - ', start_date)
-            submit_button = st.button("Extract Features")
-
-            start_row = 0
-            if submit_button:
-                st.write('Extracted Features Dataframe for ', user_input)
-                for i in range(0, len(data)):
-                    if start_date <= pd.to_datetime(data['Date'][i]):
-                        start_row = i
-                        break
-                st.write(data.iloc[start_row:, :])
-
-elif choices == 'Train Model':
+if user_input:
+    # Load data based on user input
+    data = load_data(user_input)
     
-    st.subheader("Train Machine Learning Models for Stock Prediction")
-    st.markdown('**_Select_ _Stocks_ _to_ Train**')
-    stock_select = st.selectbox("", stocks, index=0)
-    
-    if stock_select:
-        df = load_data(stock_select)
-        epoch = st.sidebar.slider("Epochs", min_value=10, max_value=300, value=100, step=10)
-        b_s = st.sidebar.slider("Batch Size", min_value=16, max_value=1024, value=32, step=16)
+    if activity == 'Explore Stocks':
+        st.subheader(f"Stock Exploration for {user_input}")
         
-        if st.sidebar.button('Train Model'):
-            st.write('**Your _final_ _dataframe_ _for_ Training**')
-            st.write(df[['Date','Close']])
+        # Options for what to explore
+        explore_option = st.radio("Choose to explore", ["Financials", "Price Data", "Moving Averages"])
+        
+        if explore_option == "Financials":
+            stock_financials(user_input)
+        elif explore_option == "Price Data":
+            plot_raw_data(user_input, data)
+        elif explore_option == "Moving Averages":
+            ma_days = st.slider("Select Number of Days for Moving Average", 5, 200, 50)
+            find_moving_avg(ma_days, data)
+
+    elif activity == 'Train Model':
+        st.subheader(f"Train Machine Learning Model for {user_input}")
+        
+        # Training configurations
+        epochs = st.number_input("Set Epochs", min_value=10, max_value=300, value=50, step=10)
+        batch_size = st.number_input("Set Batch Size", min_value=16, max_value=256, value=64)
+        
+        if st.button('Train Model'):
+            # Training the model
+            x_train, y_train, scaler = create_train_test_data(data, history_size=60)
+            model = train_LSTM_model(x_train, y_train, epochs, batch_size)
             
-            # Adjusted to correctly unpack the returned values from create_train_test_data
-            x_train, y_train, scaler = create_train_test_data(df, history_size=60) # Make sure this matches your intended use
-            
-            # Since you're predicting 'Close' prices, ensure the input to create_train_test_data is correct
-            model = train_LSTM_model(x_train, y_train, epochs=epoch, batch_size=b_s)
-            
-            prediction_plot(model, df, scaler, history_size=60)  # Assuming history_size=60 as before
-            
+            # Displaying predictions
+            prediction_plot(model, data, scaler, history_size=60)
             st.success("Model trained successfully!")
