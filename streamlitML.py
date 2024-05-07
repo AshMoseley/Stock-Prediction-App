@@ -24,7 +24,6 @@ stocks = ["AAPL", "GOOG", "MSFT", "AMZN", "TSLA", "GME", "NVDA", "AMD"]
 
 
 # ---------- Caching Data ----------------------------
-
 @st.cache_data
 def load_data(ticker):
     data = yf.download(ticker, START,  TODAY)
@@ -33,40 +32,30 @@ def load_data(ticker):
 
 
 # ---------- Displaying Financials ----------------------------
-
 def stock_financials(stock):
     df_ticker = yf.Ticker(stock)
     info = df_ticker.info
 
-    # Prepare data in a dictionary for easier manipulation and display
     financial_data = {
         "Company Name": info.get('longName'),
         "Sector": info.get('sector'),
         "Website": info.get('website'),
-        "Average Volume": f"{info.get('averageVolume', 0):,}",  # format with commas
+        "Average Volume": f"{info.get('averageVolume', 0):,}", 
         "Market Cap": f"${info.get('marketCap', 0):,}",
         "Previous Close": f"${info.get('previousClose', 0):.2f}",
-        "52 Week Change": f"{info.get('52WeekChange', 0) * 100:.2f}%",  # converting to percentage
+        "52 Week Change": f"{info.get('52WeekChange', 0) * 100:.2f}%",
         "52 Week High": f"${info.get('fiftyTwoWeekHigh', 0):.2f}",
         "52 Week Low": f"${info.get('fiftyTwoWeekLow', 0):.2f}",
         "200 Day Average": f"${info.get('twoHundredDayAverage', 0):.2f}"
     }
-
-    # Convert dictionary to DataFrame for better tabular display
     financial_df = pd.DataFrame(list(financial_data.items()), columns=['Metric', 'Value'])
-    
-    # Display as a table using Streamlit, this can be styled if needed
     st.table(financial_df.set_index('Metric'))
 
-
-
 # ---------- Plotting Raw Data ----------------------------
-
 def plot_raw_data(stock, data):
     df_ticker = yf.Ticker(stock)
-    Name = df_ticker.info['longName']  # Use for the plot title
+    Name = df_ticker.info['longName'] 
 
-    # If data is passed as a DataFrame, ensure to reset the index if 'Date' is not a column
     if 'Date' not in data.columns:
         data.reset_index(inplace=True)
 
@@ -81,7 +70,6 @@ def plot_raw_data(stock, data):
         plotly_figure = px.line(data_frame=cust_data, x=data['Date'], y=features_selected,
                                 title=f'{Name} - Selected Features Over Time')
         
-        # Update layout for better visualization
         plotly_figure.update_layout(
             title={'y':0.9, 'x':0.5, 'xanchor': 'center', 'yanchor': 'top'},
             xaxis_title='Date',
@@ -96,6 +84,7 @@ def plot_raw_data(stock, data):
 
 
 # ----------------- Model Training and Evaluation ----------------------
+
 def evaluate_model_performance(y_true, y_pred):
     mse = mean_squared_error(y_true, y_pred)
     rmse = sqrt(mse)
@@ -108,7 +97,6 @@ def evaluate_model_performance(y_true, y_pred):
 
 # ------------- Data preparation for LSTM Model ----------------------
 def create_train_test_data(df, history_size=60):
-    # Assuming 'Date' is not used as an input feature for LSTM
     features = df[['Open', 'High', 'Low', 'Close', 'Volume']]
     scaler = MinMaxScaler(feature_range=(0, 1))
     scaled_features = scaler.fit_transform(features)
@@ -127,8 +115,6 @@ def create_train_test_data(df, history_size=60):
 
 
 # ----------- Creating Training and Testing Data for LSTM Model ----------------
-
-# LSTM model with dropout and early stopping
 def train_LSTM_model(x_train, y_train, epochs, batch_size):
     model = Sequential([
         LSTM(50, return_sequences=True, input_shape=(x_train.shape[1], x_train.shape[2])),
@@ -146,29 +132,21 @@ def train_LSTM_model(x_train, y_train, epochs, batch_size):
               validation_split=0.1, callbacks=[early_stop], verbose=1)
     return model
 
-
-
 # -------------- Finding Moving Average ---------------------------------------
-
 def find_moving_avg(ma_days, data):
-    # Ensure the Date column is in the correct format and set as index if not already
     if 'Date' not in data.columns:
         data.reset_index(inplace=True)
     data['Date'] = pd.to_datetime(data['Date'])
     data.set_index('Date', inplace=True)
 
-    # Calculate the moving average directly in the DataFrame to avoid chained assignment
     data.loc[:, 'SMA'] = data['Close'].rolling(window=ma_days, min_periods=1).mean()
 
-    # Reset index to use Date in the plot
     data.reset_index(inplace=True)
 
-    # Plotting the stock prices and the moving average
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=data['Date'], y=data['Close'], mode='lines', name='Close Price'))
     fig.add_trace(go.Scatter(x=data['Date'], y=data['SMA'], mode='lines', name=f'{ma_days}-Day SMA'))
 
-    # Update layout for better visualization
     fig.update_layout(
         title=f'{ma_days}-Day Moving Average',
         xaxis_title='Date',
@@ -182,12 +160,9 @@ def find_moving_avg(ma_days, data):
 
 
 #------------ Plotting the Predictions -------------------------
-
-
 def prediction_plot(model, df, scaler, history_size=60):
-    # Ensure 'features' remains a DataFrame with the same columns used in scaler fitting
     features = df[['Open', 'High', 'Low', 'Close', 'Volume']]
-    dates = df['Date'].values  # Make sure this is used correctly in plotting
+    dates = df['Date'].values 
 
     # Apply transformation using DataFrame to retain column names
     scaled_features = scaler.transform(features)
@@ -201,21 +176,18 @@ def prediction_plot(model, df, scaler, history_size=60):
     # Get model predictions
     predicted_prices = model.predict(X_test)
 
-    # Inverse transform the predictions; creating a dummy DataFrame for inverse
+    # Inverse transform the predictions
     dummy_for_inverse = pd.DataFrame(np.zeros((len(predicted_prices), scaled_features.shape[1])),
                                      columns=features.columns)
-    dummy_for_inverse['Close'] = predicted_prices.flatten()  # Assuming 'Close' is what we're predicting
+    dummy_for_inverse['Close'] = predicted_prices.flatten()  
 
-    # Using the scaler on the DataFrame now
     inverse_transformed = scaler.inverse_transform(dummy_for_inverse)
-    predicted_close_prices = inverse_transformed[:, features.columns.get_loc('Close')]  # Extract the 'Close' column values
+    predicted_close_prices = inverse_transformed[:, features.columns.get_loc('Close')]  
 
-    actual_close_prices = features['Close'][history_size:].values  # Ensure this pulls correctly
+    actual_close_prices = features['Close'][history_size:].values
 
     mse, rmse, mae, r2 = evaluate_model_performance(actual_close_prices, predicted_close_prices)
 
-
-    # Plotting
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=dates[history_size:], y=actual_close_prices, mode='lines', name='Actual Close Price'))
     fig.add_trace(go.Scatter(x=dates[history_size:], y=predicted_close_prices, mode='lines', name='Predicted Close Price'))
@@ -228,23 +200,18 @@ def prediction_plot(model, df, scaler, history_size=60):
     st.write(f"Mean Absolute Error: {mae}")
     st.write(f"R^2 Score: {r2}")
 
-
-
 # ---------------- Sidebar Menu -----------------------
 st.sidebar.title("Settings")
 activity = st.sidebar.radio("Select Activity", ["Explore Stocks", "Train Model"])
 
-# Allow user input for stock symbol
 user_input = st.sidebar.text_input("Enter Stock Symbol", 'AAPL').upper()
 
 if user_input:
-    # Load data based on user input
     data = load_data(user_input)
     
     if activity == 'Explore Stocks':
         st.subheader(f"Stock Exploration for {user_input}")
         
-        # Options for what to explore
         explore_option = st.radio("Choose to explore", ["Financials", "Price Data", "Moving Averages"])
         
         if explore_option == "Financials":
@@ -267,6 +234,5 @@ if user_input:
             x_train, y_train, scaler = create_train_test_data(data, history_size=60)
             model = train_LSTM_model(x_train, y_train, epochs, batch_size)
             
-            # Displaying predictions
             prediction_plot(model, data, scaler, history_size=60)
             st.success("Model trained successfully!")
