@@ -1,11 +1,11 @@
 # Stock Prediction App
 
-This project is a Stock Prediction App built with Streamlit, yFinance, and TensorFlow. It allows users to explore stock financial data, visualize historical stock prices, compute moving averages, and train a machine learning model to predict stock prices.
+This project is a Stock Prediction App built with Streamlit, yFinance, and TensorFlow. It allows users to explore stock financial data, visualise historical stock prices, compute moving averages, and train a machine learning model to predict stock prices.
 
 ## Features
 
 - **Explore Stocks**: View financial data and historical prices for selected stocks.
-- **Moving Averages**: Calculate and visualize moving averages for stock prices.
+- **Moving Averages**: Calculate and visualise moving averages for stock prices.
 - **Train LSTM Model**: Train an LSTM model to predict future stock prices.
 
 ## Installation
@@ -62,7 +62,7 @@ This project is a Stock Prediction App built with Streamlit, yFinance, and Tenso
 2. **Choose an activity**:
     - **Explore Stocks**: View financials, price data, or moving averages.
     - **Train Model**: Set the number of epochs and batch size, then train an LSTM model to predict stock prices.
-3. **View the results**: Visualize historical data, moving averages, and model predictions directly in the app.
+3. **View the results**: Visualise historical data, moving averages, and model predictions directly in the app.
 
 ## Project Structure
 
